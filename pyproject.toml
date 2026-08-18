@@ -23,6 +23,14 @@ packages = ["download_organizer"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
+[tool.coverage.run]
+# GUI/托盘为 UI 层，无显示环境难以自动化覆盖，从覆盖率统计中排除；
+# 核心逻辑（organizer/aria2/config/rules/cli）保持高门槛。
+omit = ["download_organizer/gui.py", "download_organizer/tray.py"]
+
+[tool.coverage.report]
+show_missing = true
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"

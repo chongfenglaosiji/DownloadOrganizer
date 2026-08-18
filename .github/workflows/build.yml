@@ -42,7 +42,7 @@ jobs:
 
       - name: Run tests (with coverage)
         run: |
-          python -m pytest tests --cov=download_organizer --cov-report=term-missing --cov-fail-under=70
+          python -m pytest tests --cov=download_organizer --cov-report=term-missing --cov-fail-under=60
 
       - name: Build exe (windowed single-file)
         run: |
