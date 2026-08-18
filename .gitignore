@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# 测试 / 运行时产物
+.pytest_cache/
+test_tmp/
+runtime/
+.test_tmp/
+
+# 配置 & 状态（本地用户文件，不入库）
+config.toml
+download_organizer.toml
+*_state.json
+download_organizer_state.json
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

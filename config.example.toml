@@ -1,0 +1,59 @@
+# DownloadOrganizer 配置示例
+# 复制为 config.toml 后按需修改。未列出的项使用默认值。
+#
+# 注意：TOML 中反斜杠需转义。Windows 路径建议统一用正斜杠，例如 "D:/资料/课程"，
+#       或用双反斜杠 "D:\\资料\\课程"。
+
+[organizer]
+downloads_folder = "~/Downloads"     # 主下载目录（可选，默认取系统下载目录）
+log_level = "INFO"                   # DEBUG / INFO / WARNING / ERROR
+state_file = "~/.download_organizer_state.json"
+
+# 方式一：只给一个/多个下载目录，规则用默认分类
+# downloads_paths = ["~/Downloads"]
+
+# 方式二：精细配置每个目录（推荐）
+[[downloads]]
+path = "~/Downloads"
+recursive = false
+check_interval = 1.0
+max_checks = 30
+conflict_policy = "rename"           # rename | overwrite | skip | recycle
+persist_processed = true
+ignored_endings = [".crdownload", ".part", ".tmp", ".temp", "~"]
+
+  # 分类规则：按顺序匹配，先命中先生效
+  [[downloads.rules]]
+  category = "图片"
+  extensions = [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".webp"]
+
+  [[downloads.rules]]
+  category = "视频"
+  extensions = [".mp4", ".mkv", ".avi", ".mov", ".flv", ".wmv"]
+
+  [[downloads.rules]]
+  category = "压缩包"
+  extensions = [".zip", ".tar", ".gz", ".rar", ".7z"]
+
+  [[downloads.rules]]
+  category = "文档"
+  extensions = [".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt"]
+
+  [[downloads.rules]]
+  category = "音频"
+  extensions = [".mp3", ".wav", ".flac", ".aac", ".ogg"]
+
+  [[downloads.rules]]
+  category = "可执行文件"
+  extensions = [".exe", ".bat", ".msi"]
+
+  # 示例：按文件名正则/自定义目标目录
+  # [[downloads.rules]]
+  # category = "课程"
+  # name_pattern = "课程_.*"
+  # target_dir = "D:/资料/课程"      # 绝对路径
+
+  # 兜底：未命中上述规则的归入“其他文件”
+  [[downloads.rules]]
+  category = "其他文件"
+  extensions = []
