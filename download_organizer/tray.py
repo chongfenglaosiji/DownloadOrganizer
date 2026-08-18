@@ -39,8 +39,28 @@ def set_paused(paused: bool) -> None:
 _ACTIVE_ICON = None
 
 
+def icon_path() -> Path:
+    """定位程序图标 assets/icon.ico（打包后经 sys._MEIPASS 解压，源码运行取项目根）。"""
+    if getattr(sys, "frozen", False):  # PyInstaller 打包
+        base = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+    else:
+        base = Path(__file__).resolve().parent.parent
+    return base / "assets" / "icon.ico"
+
+
 def _make_icon_image() -> "Image.Image":
-    """绘制一个简单的文件夹图标（64x64）。"""
+    """托盘图标：优先加载 assets/icon.ico，失败回退手绘文件夹图标。"""
+    ico = icon_path()
+    if ico.is_file():
+        try:
+            img = Image.open(ico)
+            img = img.convert("RGBA")
+            if img.size[0] > 64:   # 托盘显示用 64 足矣
+                img = img.resize((64, 64), Image.LANCZOS)
+            return img
+        except Exception as exc:  # noqa: BLE001 —— 加载失败回退手绘
+            log.warning("加载图标失败，使用内置图标: %s", exc)
+    # 回退：手绘简单文件夹图标（64x64）
     img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     d.rectangle([6, 14, 58, 54], fill=(255, 200, 40, 255))

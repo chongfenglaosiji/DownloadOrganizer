@@ -119,21 +119,34 @@ def main(argv=None) -> int:
     if args.once:
         return _run_once(cfg)
 
-    # 移动成功通知（可选，需托盘/通知后端）
-    if getattr(cfg, "notify_on_move", True):
-        try:
-            from .tray import notify
-            MOVE_CALLBACKS.append(
-                lambda src, dst: notify("已整理", f"{Path(dst).name} → {Path(dst).parent.name}"))
-        except Exception:  # noqa: BLE001
-            pass
+    # 常驻模式：单实例保护，防止重复启动
+    from .single_instance import SingleInstance
+    _instance = SingleInstance()
+    if not _instance.acquire():
+        msg = "程序已在运行，本实例退出（如需重启请先退出托盘）"
+        log.warning(msg)
+        if _has_console:
+            print(msg)
+        return 1
 
-    # 常驻：优先 watchdog；未安装时自动回退轮询监控；可选托盘
     try:
-        _run_resident(cfg, cfg_path)
-    except ImportError as exc:
-        log.warning("watchdog 不可用，回退到轮询监控: %s", exc)
-        run_polling(cfg, state_file=cfg.state_file, block=True)
+        # 移动成功通知（可选，需托盘/通知后端）
+        if getattr(cfg, "notify_on_move", True):
+            try:
+                from .tray import notify
+                MOVE_CALLBACKS.append(
+                    lambda src, dst: notify("已整理", f"{Path(dst).name} → {Path(dst).parent.name}"))
+            except Exception:  # noqa: BLE001
+                pass
+
+        # 常驻：优先 watchdog；未安装时自动回退轮询监控；可选托盘
+        try:
+            _run_resident(cfg, cfg_path)
+        except ImportError as exc:
+            log.warning("watchdog 不可用，回退到轮询监控: %s", exc)
+            run_polling(cfg, state_file=cfg.state_file, block=True)
+    finally:
+        _instance.release()
     return 0
 
 

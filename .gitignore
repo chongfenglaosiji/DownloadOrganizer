@@ -24,6 +24,5 @@ download_organizer_state.json
 .DS_Store
 Thumbs.db
 
-# 反编译/工具残留
-_tools/
-tools/
+# 反编译/工具残留（仅根目录旧残留；tools/ 下的源码脚本如 make_icon.py 需入库）
+/_tools/

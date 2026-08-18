@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "download-organizer"
-version = "0.2.0"
+version = "0.3.0"
 description = "自动整理下载文件夹的文件（按类型归档到分类子文件夹）"
 readme = "README.md"
 requires-python = ">=3.11"

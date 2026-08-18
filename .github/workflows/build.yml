@@ -47,6 +47,7 @@ jobs:
       - name: Build exe (windowed single-file)
         run: |
           pyinstaller --noconfirm --clean --onefile --noconsole --name DownloadOrganizer ^
+            --icon assets/icon.ico --add-data "assets/icon.ico;assets" ^
             --collect-submodules watchdog --collect-all pystray DownloadOrganizer.py
 
       - name: Verify artifact

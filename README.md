@@ -62,6 +62,8 @@ Python 3.11+。
 ## 功能
 
 - 常驻监控（watchdog），也可 `--once` 单次整理退出；**未安装 watchdog 时自动回退轮询监控**
+- **单实例保护**：重复启动时自动检测并退出（防止多开），已运行的实例不受影响
+- **程序图标**：exe 与系统托盘使用统一的自定义图标（`assets/icon.ico`，多尺寸）
 - **系统托盘**（常驻时）：暂停/继续、立即整理一次、打开配置、打开日志目录、退出
 - **移动后桌面通知**（可配置 `notify_on_move`）
 - 启动时整理既有文件（`recursive` 时含子目录，且不会重复移动已归档文件）
@@ -123,18 +125,21 @@ conflict_policy = "rename"   # rename | overwrite | skip
 
 ```
 download_organizer/
-    __init__.py      # 公开 API + 版本
-    __main__.py      # python -m download_organizer 入口
-    config.py        # 配置模型 + TOML 加载 + 默认值
-    rules.py         # 分类规则引擎
-    organizer.py     # 核心逻辑：状态 / 冲突 / 完成判定 / 移动 / 监控 / 轮询
-    aria2.py         # aria2 控制文件解析（精确完成判定）
-    tray.py          # 系统托盘 + 桌面通知
-    gui.py           # 配置图形界面（tkinter）
-    cli.py           # 命令行入口
-tests/               # pytest 测试
-config.example.toml  # 配置示例
-DownloadOrganizer.py # 薄启动器（便于从旧入口运行）
+    __init__.py        # 公开 API + 版本
+    __main__.py        # python -m download_organizer 入口
+    config.py          # 配置模型 + TOML 加载 + 默认值
+    rules.py           # 分类规则引擎
+    organizer.py       # 核心逻辑：状态 / 冲突 / 完成判定 / 移动 / 监控 / 轮询
+    aria2.py           # aria2 控制文件解析（精确完成判定）
+    single_instance.py # 单实例锁（防重复启动）
+    tray.py            # 系统托盘 + 桌面通知
+    gui.py             # 配置图形界面（tkinter）
+    cli.py             # 命令行入口
+assets/icon.ico        # 程序图标（exe + 托盘，多尺寸）
+tools/make_icon.py     # 图标生成脚本
+tests/                 # pytest 测试
+config.example.toml    # 配置示例
+DownloadOrganizer.py   # 薄启动器（便于从旧入口运行）
 ```
 
 ## 测试
