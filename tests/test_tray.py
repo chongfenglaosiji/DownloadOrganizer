@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
 """托盘模块结构级测试（不启动真实托盘，验证降级与暂停开关）。"""
-import pytest
-
 from download_organizer.organizer import PAUSED, set_paused
 
 

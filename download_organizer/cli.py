@@ -28,7 +28,6 @@ from .organizer import (
     ProcessedState,
     run_monitor,
     run_polling,
-    set_paused,
 )
 
 LOG_DIR = Path.home() / ".download_organizer"

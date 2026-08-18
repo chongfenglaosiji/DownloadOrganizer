@@ -244,7 +244,6 @@ def is_file_locked(file_path: str | Path) -> bool:
     if os.name != "nt":
         return False
     import ctypes
-    from ctypes import wintypes
 
     GENERIC_READ = 0x80000000
     OPEN_EXISTING = 3

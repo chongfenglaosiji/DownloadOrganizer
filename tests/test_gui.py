@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """配置 GUI 的模型↔TOML 往返测试（不依赖真实显示环境）。"""
 import os
-import tempfile
 
 from download_organizer.config import load_config
 from download_organizer.gui import ConfigEditor, _toml_str

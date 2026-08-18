@@ -26,10 +26,6 @@ except Exception:  # noqa: BLE001 —— 缺依赖/无显示时降级
     _HAVE_TRAY = False
 
 
-# 全局暂停开关（供 worker / 轮询 / handler 检查）
-PAUSED = threading.Event()
-
-
 def is_paused() -> bool:
     return PAUSED.is_set()
 

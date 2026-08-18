@@ -302,8 +302,8 @@ class ConfigEditor:
             'log_level = "INFO"',
             "",
         ]
-        for i, d in enumerate(self.downloads):
-            lines.append(f"[[downloads]]")
+        for d in self.downloads:
+            lines.append("[[downloads]]")
             lines.append(f"path = {ts(d['path'])}")
             lines.append(f'recursive = {"true" if d["recursive"] else "false"}')
             lines.append(f"conflict_policy = {ts(d['conflict_policy'])}")
@@ -314,7 +314,7 @@ class ConfigEditor:
                          + "[" + ", ".join(ts(x) for x in d["ignored_endings"]) + "]")
             lines.append("")
             for r in d["rules"]:
-                lines.append(f"  [[downloads.rules]]")
+                lines.append("  [[downloads.rules]]")
                 lines.append(f"  category = {ts(r['category'])}")
                 if r["extensions"]:
                     lines.append("  extensions = ["
