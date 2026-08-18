@@ -65,7 +65,7 @@ class TrayApp:
     def _menu(self):
         return pystray.Menu(
             pystray.MenuItem(
-                lambda: self._paused_label,
+                lambda item: self._paused_label,
                 self._toggle_pause,
                 checked=lambda item: PAUSED.is_set(),
             ),
