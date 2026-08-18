@@ -77,6 +77,23 @@ DownloadOrganizer.py # 薄启动器（便于从旧入口运行）
 python -m pytest tests
 ```
 
+## 打包 / 发布（GitHub Actions 自动化）
+
+推送到带版本号的标签（如 `v0.1.0`）会自动触发工作流 `.github/workflows/build.yml`：
+用 PyInstaller 在 Windows 上打包成**单文件、无控制台窗口**的 `DownloadOrganizer.exe`，
+并通过 `--noconsole` 使其适合放进 `shell:startup`（开机自启、无黑窗），随后自动发布为 GitHub Release。
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+# Release 发布后可到仓库 Releases 页下载 DownloadOrganizer.exe
+```
+
+> 可视化查看构建：仓库页面 → Actions
+
+如需**每推送到 main 都构建**，把 `build.yml` 里的触发条件改成 `push: branches: [main]` 即可；
+也可去掉 `--noconsole` 变成带控制台的调试版。
+
 ## 说明
 
 第三方依赖仅 `watchdog`；其余为 Python 标准库。原 `.exe` 中的关卡逻辑（分类表、忽略后缀、
