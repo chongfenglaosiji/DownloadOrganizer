@@ -10,6 +10,12 @@ on:
 permissions:
   contents: write
 
+# windows-latest 默认 shell 是 PowerShell；本工作流的命令使用 cmd 语法
+# （^ 续行、if not exist），显式指定 shell: cmd。
+defaults:
+  run:
+    shell: cmd
+
 jobs:
   build-windows:
     name: Build Windows exe
