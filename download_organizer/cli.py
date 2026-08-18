@@ -93,16 +93,13 @@ def main(argv=None) -> int:
     log = logging.getLogger("download_organizer")
     log.info("配置: %s (%d 个监控目录)", cfg_path or "默认", len(cfg.downloads))
 
-    if not _has_console and not args.hidden:
-        # 自动化场景（无控制台）默认走 --hidden 语义，避免日志异常
-        pass
-
     if args.once:
         state = ProcessedState(cfg.state_file)
         for d in cfg.downloads:
             org = DownloadOrganizer(d, state)
             org.create_folders()
             org.organize_existing()
+        state.flush()
         return 0
 
     run_monitor(cfg, state_file=cfg.state_file, block=True)

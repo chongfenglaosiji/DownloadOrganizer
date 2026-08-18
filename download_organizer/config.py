@@ -46,11 +46,13 @@ class DownloadsConfig:
     recursive: bool = False
     rules: tuple[Rule, ...] = ()
     ignored_endings: tuple[str, ...] = (
-        ".crdownload", ".part", ".tmp", ".temp", "~",
+        ".crdownload", ".part", ".tmp", ".temp", "~", ".aria2",
     )
     conflict_policy: str = "rename"   # rename | overwrite | skip | recycle
     check_interval: float = 1.0
     max_checks: int = 30
+    # 连续多少次采样大小都稳定才算“下载完成”，降低对写字中/分段下载文件的误判
+    stable_checks: int = 3
     # 如果为 True，在移动后把文件路径记入已处理记录（持久化），避免重启后重复整理
     persist_processed: bool = True
 
@@ -136,6 +138,7 @@ def _parse_downloads(raw: dict) -> DownloadsConfig:
         conflict_policy=conflict,
         check_interval=float(raw.get("check_interval", 1.0)),
         max_checks=int(raw.get("max_checks", 30)),
+        stable_checks=int(raw.get("stable_checks", 3)),
         persist_processed=bool(raw.get("persist_processed", True)),
     )
 

@@ -18,9 +18,12 @@ path = "~/Downloads"
 recursive = false
 check_interval = 1.0
 max_checks = 30
+# 连续多少次采样大小不变才算“下载完成”，降低对 aria2 等分段/慢速下载的误判
+stable_checks = 3
 conflict_policy = "rename"           # rename | overwrite | skip | recycle
 persist_processed = true
-ignored_endings = [".crdownload", ".part", ".tmp", ".temp", "~"]
+# aria2 下载时控制文件 *.aria2 也会被忽略，不会归档
+ignored_endings = [".crdownload", ".part", ".tmp", ".temp", "~", ".aria2"]
 
   # 分类规则：按顺序匹配，先命中先生效
   [[downloads.rules]]

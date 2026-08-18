@@ -23,3 +23,7 @@ download_organizer_state.json
 .vscode/
 .DS_Store
 Thumbs.db
+
+# 反编译/工具残留
+_tools/
+tools/
