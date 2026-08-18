@@ -33,17 +33,21 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pyinstaller watchdog pytest
+          python -m pip install pyinstaller watchdog pytest pytest-cov ruff
           python -m pip install -e .
 
-      - name: Run tests
+      - name: Lint (ruff)
         run: |
-          python -m pytest tests
+          ruff check download_organizer tests
+
+      - name: Run tests (with coverage)
+        run: |
+          python -m pytest tests --cov=download_organizer --cov-report=term-missing --cov-fail-under=70
 
       - name: Build exe (windowed single-file)
         run: |
           pyinstaller --noconfirm --clean --onefile --noconsole --name DownloadOrganizer ^
-            --collect-submodules watchdog DownloadOrganizer.py
+            --collect-submodules watchdog --collect-all pystray DownloadOrganizer.py
 
       - name: Verify artifact
         run: |

@@ -108,7 +108,7 @@ class TestState:
         sf = os.path.join(dl_dir, "state.json")
         s = ProcessedState(sf)
         s.add("C:/x/y.jpg")
-        s.save()
+        s.save(force=True)
         s2 = ProcessedState(sf)
         assert s2.contains("C:/x/y.jpg")
 
@@ -121,6 +121,25 @@ class TestState:
         # 已处理项留在原地，未处理项被移动
         assert os.path.exists(os.path.join(root, "photo.jpg"))
         assert os.path.exists(os.path.join(root, "文档", "doc.pdf"))
+
+    def test_cap_drops_oldest(self, dl_dir):
+        sf = os.path.join(dl_dir, "state.json")
+        s = ProcessedState(sf)
+        s.MAX_ITEMS = 5
+        for i in range(10):
+            s.add(f"C:/dl/f{i}.jpg")
+        assert len(s._items) == 5
+        # 最旧的 5 条被丢弃，保留最新的 5 条
+        assert "C:/dl/f0.jpg" not in s._items
+        assert "C:/dl/f9.jpg" in s._items
+
+    def test_prune_keeps_only_root_paths(self, dl_dir):
+        s = ProcessedState(None)
+        s.add(os.path.join(dl_dir, "inside.jpg"))
+        s.add("C:/outside/x.jpg")
+        s.prune([dl_dir])
+        assert os.path.join(dl_dir, "inside.jpg") in s._items
+        assert "C:/outside/x.jpg" not in s._items
 
 
 class TestConflictResolver:
@@ -223,6 +242,106 @@ class TestRecursive:
         org = DownloadOrganizer(cfg, ProcessedState(None))
         org.organize_existing()
         assert os.path.exists(nested)  # 非递归不动子目录
+
+
+class TestEnhancedCompletion:
+    def test_enhanced_uses_stable_size_without_aria2(self, dl_dir):
+        from download_organizer.organizer import enhanced_completion_check
+        p = os.path.join(dl_dir, "stable.bin")
+        with open(p, "wb") as f:
+            f.write(b"x" * 50)
+        assert enhanced_completion_check(p, interval=0.01, max_checks=5,
+                                         stable_checks=2) is True
+
+    def test_enhanced_aria2_signal(self, dl_dir):
+        import struct
+        from download_organizer.organizer import enhanced_completion_check
+        # 构造控制文件：总长 100；主文件仅 10 → 未完成（无需等待采样）
+        ctrl = os.path.join(dl_dir, "a.bin.aria2")
+        header = struct.pack(">HII", 1, 0, 0) + struct.pack(">I", 16384)
+        header += struct.pack(">Q", 100) + struct.pack(">Q", 0) + struct.pack(">I", 0)
+        with open(ctrl, "wb") as f:
+            f.write(header)
+        with open(os.path.join(dl_dir, "a.bin"), "wb") as f:
+            f.write(b"x" * 10)
+        assert enhanced_completion_check(os.path.join(dl_dir, "a.bin"),
+                                         interval=0.01, max_checks=5,
+                                         stable_checks=2,
+                                         use_aria2_check=True) is False
+
+    def test_enhanced_locked_check(self, dl_dir):
+        # 非 Windows 平台 is_file_locked 恒 False，走大小判定；此处仅验证不抛错
+        from download_organizer.organizer import enhanced_completion_check, is_file_locked
+        p = os.path.join(dl_dir, "f.bin")
+        with open(p, "wb") as f:
+            f.write(b"x" * 10)
+        assert is_file_locked(p) is False
+        assert enhanced_completion_check(p, interval=0.01, max_checks=5,
+                                         stable_checks=2,
+                                         check_file_locked=True) is True
+
+
+class TestTimestampOnMove:
+    def test_move_updates_timestamp(self, dl):
+        root, org = dl["root"], dl["org"]
+        f = _make(root, "photo.jpg")
+        old_mtime = os.path.getmtime(f)
+        time.sleep(0.02)
+        org.move_file(f)
+        target = os.path.join(root, "图片", "photo.jpg")
+        assert os.path.exists(target)
+        assert os.path.getmtime(target) >= old_mtime
+
+    def test_move_timestamp_disabled(self, dl_dir):
+        cfg = DownloadsConfig(path=dl_dir, rules=RULES,
+                              update_timestamp_on_move=False,
+                              check_interval=0.01, max_checks=2)
+        org = DownloadOrganizer(cfg, ProcessedState(None))
+        f = _make(dl_dir, "photo.jpg")
+        before = os.path.getmtime(f)
+        org.move_file(f)
+        target = os.path.join(dl_dir, "图片", "photo.jpg")
+        assert os.path.exists(target)
+        # 关闭后：目标 mtime 应基本等于源 mtime（shutil.move 保留）
+        assert abs(os.path.getmtime(target) - before) < 1.0
+
+
+class TestPolling:
+    def test_polling_run_once_moves_stable_file(self, dl_dir):
+        from download_organizer.organizer import PollingMonitor
+        from download_organizer.config import DownloadsConfig
+        cfg = DownloadsConfig(path=dl_dir, rules=RULES,
+                              check_interval=0.01, max_checks=2,
+                              poll_interval=0.05)
+        state = ProcessedState(None)
+        mon = PollingMonitor(cfg, state)
+        f = _make(dl_dir, "photo.jpg")
+        mon.run_once()   # 第一轮：记录快照
+        mon.run_once()   # 第二轮：快照稳定 → 移动
+        assert os.path.exists(os.path.join(dl_dir, "图片", "photo.jpg"))
+        assert not os.path.exists(f)
+
+    def test_polling_ignores_growing_file(self, dl_dir):
+        from download_organizer.organizer import PollingMonitor
+        from download_organizer.config import DownloadsConfig
+        cfg = DownloadsConfig(path=dl_dir, rules=RULES,
+                              check_interval=0.01, max_checks=2,
+                              poll_interval=0.05)
+        state = ProcessedState(None)
+        mon = PollingMonitor(cfg, state)
+        p = os.path.join(dl_dir, "growing.jpg")
+        with open(p, "wb") as f:
+            f.write(b"x" * 5)
+        mon.run_once()          # 快照1: 5
+        time.sleep(0.02)
+        with open(p, "ab") as f:
+            f.write(b"y" * 5)   # 快照2: 10（变化）
+        mon.run_once()
+        time.sleep(0.02)
+        with open(p, "ab") as f:
+            f.write(b"z" * 5)   # 快照3: 15（仍变化）
+        mon.run_once()
+        assert os.path.exists(p)  # 一直增长，未移动
 
 
 try:

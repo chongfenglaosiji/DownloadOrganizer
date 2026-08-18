@@ -50,6 +50,9 @@ python -m download_organizer --once --config config.toml
 # 无控制台日志到文件（适合开机自启/无窗口）
 python -m download_organizer --hidden
 
+# 打开图形化配置编辑器
+python -m download_organizer --gui
+
 # 旧版单文件入口仍可用
 python DownloadOrganizer.py
 ```
@@ -58,15 +61,21 @@ Python 3.11+。
 
 ## 功能
 
-- 常驻监控（watchdog），也可 `--once` 单次整理退出
+- 常驻监控（watchdog），也可 `--once` 单次整理退出；**未安装 watchdog 时自动回退轮询监控**
+- **系统托盘**（常驻时）：暂停/继续、立即整理一次、打开配置、打开日志目录、退出
+- **移动后桌面通知**（可配置 `notify_on_move`）
 - 启动时整理既有文件（`recursive` 时含子目录，且不会重复移动已归档文件）
 - 按扩展名 / 文件名正则 / 自定义目标目录 分类
 - **下载中保护**：忽略未完成/临时文件 `.crdownload`、`.part`、`.tmp`、`.temp`、`~`、
   **`.aria2`（aria2 控制文件）**；正在写入的文件不会被移动
-- **完成判定**：大小**连续多次采样稳定**才算“下载完成”，显著降低对 aria2 等
-  分段/慢速下载的误判
+- **完成判定（精确增强）**：
+  - aria2 场景：解析 `*.aria2` 控制文件里的**总长度**，主文件达到该长度即判定完成（不再只靠启发式）
+  - Windows 场景：**文件被写入进程独占占用**时视为未完成
+  - 通用回退：大小**连续多次采样稳定**才算完成
 - 冲突策略：`rename`（自动 `xxx (1).ext`）/ `overwrite` / `skip`
-- **状态持久化**：已处理文件记录到 JSON，重启不重复整理；**同名文件重新下载后会再次整理**
+- **状态持久化**：已处理文件记录到 JSON，重启不重复整理；**同名文件重新下载后会再次整理**；
+  记录有上限并自动清理过期项，状态文件不会无限增长
+- 移动后默认**更新目标文件时间戳**（可配置 `update_timestamp_on_move`）
 - 支持多下载目录，每个目录独立规则
 - 结构化日志；`Ctrl+C` 优雅停止
 
@@ -74,11 +83,15 @@ Python 3.11+。
 
 复制 [`config.example.toml`](config.example.toml) 为 `config.toml` 后修改。
 
-支持的字段（`[organizer]`）：`downloads_folder`、`log_level`、`state_file`；
+支持的字段（`[organizer]`）：`downloads_folder`、`log_level`、`state_file`、`notify_on_move`、
+`enable_tray`；
 每个 `[[downloads]]`：`path`、`recursive`、`check_interval`、`max_checks`、`stable_checks`、
-`conflict_policy`、`persist_processed`、`ignored_endings`、`rules`。
+`conflict_policy`、`persist_processed`、`use_aria2_check`、`check_file_locked`、`poll_interval`、
+`update_timestamp_on_move`、`ignored_endings`、`rules`。
 每条 `rules`：`category`、`extensions`、`name_pattern`、`target_dir`。
 规则按顺序匹配，先命中先生效；无扩展名/无正则的规则作为兜底。
+
+> 也可以用 `--gui` 打开图形化配置编辑器，保存后自动生成 TOML。
 
 最小示例：
 
@@ -114,7 +127,10 @@ download_organizer/
     __main__.py      # python -m download_organizer 入口
     config.py        # 配置模型 + TOML 加载 + 默认值
     rules.py         # 分类规则引擎
-    organizer.py     # 核心逻辑：状态 / 冲突 / 完成判定 / 移动 / 监控
+    organizer.py     # 核心逻辑：状态 / 冲突 / 完成判定 / 移动 / 监控 / 轮询
+    aria2.py         # aria2 控制文件解析（精确完成判定）
+    tray.py          # 系统托盘 + 桌面通知
+    gui.py           # 配置图形界面（tkinter）
     cli.py           # 命令行入口
 tests/               # pytest 测试
 config.example.toml  # 配置示例
@@ -125,17 +141,18 @@ DownloadOrganizer.py # 薄启动器（便于从旧入口运行）
 
 ```bash
 python -m pytest tests
+# CI 额外执行：ruff 静态检查 + 覆盖率（pytest-cov）
 ```
 
 ## 打包 / 发布（GitHub Actions 自动化）
 
-推送到带版本号的标签（如 `v0.1.1`）会自动触发工作流 `.github/workflows/build.yml`：
+推送到带版本号的标签（如 `v0.2.0`）会自动触发工作流 `.github/workflows/build.yml`：
 用 PyInstaller 在 Windows 上打包成**单文件、无控制台窗口**的 `DownloadOrganizer.exe`，
 随后自动发布为 GitHub Release。
 
 ```bash
-git tag v0.1.1
-git push origin v0.1.1
+git tag v0.2.0
+git push origin v0.2.0
 # Release 发布后可到仓库 Releases 页下载 DownloadOrganizer.exe
 ```
 
@@ -143,6 +160,8 @@ git push origin v0.1.1
 
 ## 说明
 
-- 第三方依赖仅 `watchdog`；其余为 Python 标准库。
+- 第三方依赖：`watchdog`（监控，可选）、`pystray` + `Pillow`（托盘与通知，可选）；
+  其余为 Python 标准库（含 tkinter 配置界面）。
 - 原 `.exe` 中的分类表、忽略后缀、下载完成判定已完整迁移并扩展为可配置项。
 - 常驻监控默认把“等待下载完成”放到独立线程处理，不会因等待而阻塞事件监听。
+- 托盘/通知不可用（未装依赖或无显示环境）时自动降级为纯后台，不影响核心整理。

@@ -4,12 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "download-organizer"
-version = "0.1.1"
+version = "0.2.0"
 description = "自动整理下载文件夹的文件（按类型归档到分类子文件夹）"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "watchdog>=2.0",
+    "pystray>=0.19",
+    "Pillow>=9.0",
 ]
 
 [project.scripts]
@@ -20,3 +22,12 @@ packages = ["download_organizer"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# 默认规则集：E4/E7/E9（错误）+ F（pyflakes）
+select = ["E4", "E7", "E9", "F", "I"]
+ignore = ["I001"]  # import 排序暂不强制，避免 CI 误伤

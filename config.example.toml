@@ -8,6 +8,8 @@
 downloads_folder = "~/Downloads"     # 主下载目录（可选，默认取系统下载目录）
 log_level = "INFO"                   # DEBUG / INFO / WARNING / ERROR
 state_file = "~/.download_organizer_state.json"
+notify_on_move = true                # 每次成功移动后发桌面通知（需托盘）
+enable_tray = true                   # 常驻时启用系统托盘（未装 pystray 自动降级）
 
 # 方式一：只给一个/多个下载目录，规则用默认分类
 # downloads_paths = ["~/Downloads"]
@@ -22,6 +24,14 @@ max_checks = 30
 stable_checks = 3
 conflict_policy = "rename"           # rename | overwrite | skip | recycle
 persist_processed = true
+# aria2 精确完成判定：解析 *.aria2 控制文件里的总长度（默认开启）
+use_aria2_check = true
+# Windows 文件占用检测：文件被写入进程独占占用时视为未完成（默认开启）
+check_file_locked = true
+# 无 watchdog 时轮询回退的扫描间隔（秒）
+poll_interval = 5.0
+# 移动成功后把目标文件时间戳更新为当前时间
+update_timestamp_on_move = true
 # aria2 下载时控制文件 *.aria2 也会被忽略，不会归档
 ignored_endings = [".crdownload", ".part", ".tmp", ".temp", "~", ".aria2"]
 

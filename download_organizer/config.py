@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import tomllib
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -55,6 +55,14 @@ class DownloadsConfig:
     stable_checks: int = 3
     # 如果为 True，在移动后把文件路径记入已处理记录（持久化），避免重启后重复整理
     persist_processed: bool = True
+    # aria2 精确完成判定：解析 *.aria2 控制文件里的总长度（默认开启）
+    use_aria2_check: bool = True
+    # Windows 文件占用检测：文件被写入进程独占占用时视为未完成（默认开启）
+    check_file_locked: bool = True
+    # 轮询回退模式的扫描间隔（秒）；watchdog 不可用时生效
+    poll_interval: float = 5.0
+    # 移动成功后把目标文件时间戳更新为当前时间（默认开启）
+    update_timestamp_on_move: bool = True
 
 
 @dataclass(frozen=True)
@@ -63,6 +71,10 @@ class Config:
     log_level: str = "INFO"
     state_file: str = "~/.download_organizer_state.json"
     downloads: tuple[DownloadsConfig, ...] = ()
+    # 每次成功移动后发桌面通知（需要托盘/通知后端，可选）
+    notify_on_move: bool = True
+    # 常驻模式启用系统托盘（未安装 pystray 时自动降级）
+    enable_tray: bool = True
 
 
 # ---------------------------------------------------------------------------
@@ -140,6 +152,10 @@ def _parse_downloads(raw: dict) -> DownloadsConfig:
         max_checks=int(raw.get("max_checks", 30)),
         stable_checks=int(raw.get("stable_checks", 3)),
         persist_processed=bool(raw.get("persist_processed", True)),
+        use_aria2_check=bool(raw.get("use_aria2_check", True)),
+        check_file_locked=bool(raw.get("check_file_locked", True)),
+        poll_interval=float(raw.get("poll_interval", 5.0)),
+        update_timestamp_on_move=bool(raw.get("update_timestamp_on_move", True)),
     )
 
 
@@ -185,4 +201,6 @@ def _build_config(data: dict, src: Path) -> Config:
         log_level=str(top.get("log_level", "INFO")).upper(),
         state_file=str(top.get("state_file", default_config().state_file)),
         downloads=dls,
+        notify_on_move=bool(top.get("notify_on_move", True)),
+        enable_tray=bool(top.get("enable_tray", True)),
     )

@@ -24,6 +24,21 @@ from .rules import RuleMatcher
 
 log = logging.getLogger("download_organizer")
 
+# 全局暂停开关（托盘“暂停/继续”控制；worker / 轮询 / handler 检查）
+PAUSED = threading.Event()
+
+# 移动成功后的回调（源路径, 目标路径），供通知等外部功能挂接
+MOVE_CALLBACKS: list = []
+
+
+def set_paused(paused: bool) -> None:
+    """暂停或恢复整理（供托盘/外部控制）。"""
+    if paused:
+        PAUSED.set()
+    else:
+        PAUSED.clear()
+    log.info("整理已%s", "暂停" if paused else "恢复")
+
 # watchdog 仅用于“常驻监控”，为保持纯整理/单次整理不依赖第三方库，
 # 这里延迟导入，并在真正使用监控时给出清晰错误。
 def _import_watchdog():
@@ -60,6 +75,8 @@ class ProcessedState:
 
     # 磁盘写入冷却（秒）：事件频繁时合并落盘，减少整写
     SAVE_COOLDOWN = 5.0
+    # 状态记录条数上限：超出后丢弃最旧记录，防止状态文件无限增长
+    MAX_ITEMS = 10000
 
     def __init__(self, file: str | Path | None):
         self.file = str(Path(file).expanduser()) if file else None
@@ -69,6 +86,7 @@ class ProcessedState:
         self._dirty = False
         if self.file:
             self._load()
+        self._enforce_cap()
 
     def _load(self) -> None:
         try:
@@ -138,13 +156,38 @@ class ProcessedState:
     def add(self, path: str) -> None:
         """以当前文件指纹记录（供测试/旧调用：此时文件通常仍存在）。"""
         self._items[path] = _fingerprint(path)
+        self._enforce_cap()
 
     def record(self, path: str, fingerprint: tuple[int, int] | None) -> None:
         """记录移走时的源路径与指纹（用于在移动后正确判定同名重下载）。"""
         self._items[path] = fingerprint
+        self._enforce_cap()
 
     def discard(self, path: str) -> None:
         self._items.pop(path, None)
+
+    def _enforce_cap(self) -> None:
+        """超出条数上限时丢弃最旧记录（dict 保持插入序）。"""
+        while len(self._items) > self.MAX_ITEMS:
+            self._items.pop(next(iter(self._items)))
+
+    def prune(self, roots: list[str | Path]) -> None:
+        """清理已不在任何监控目录内的源路径记录（移走已久的旧记录）。
+
+        传入监控根目录列表；只保留记录在案且位于这些根目录之内的条目
+        （它们仍可能是“当前待整理”的源），其余删除。随后执行条数上限。
+        """
+        if not roots:
+            return
+        root_paths = [Path(r).expanduser() for r in roots]
+        kept: dict[str, tuple[int, int] | None] = {}
+        for p, fp in self._items.items():
+            pp = Path(p)
+            if any(pp.is_relative_to(rp) for rp in root_paths):
+                kept[p] = fp
+        self._items = kept
+        self._enforce_cap()
+        self._dirty = True
 
 
 # ---------------------------------------------------------------------------
@@ -191,6 +234,43 @@ class ConflictResolver:
 # ---------------------------------------------------------------------------
 # 下载完成判定
 # ---------------------------------------------------------------------------
+def is_file_locked(file_path: str | Path) -> bool:
+    """Windows：文件是否被写入进程独占占用。
+
+    用 ``CreateFileW`` 以共享模式 0 尝试打开：若返回 INVALID_HANDLE_VALUE
+    且错误为 ERROR_SHARING_VIOLATION(32)，说明文件正被其它进程写入/占用。
+    非 Windows 平台或无权限时返回 False（不误报）。
+    """
+    if os.name != "nt":
+        return False
+    import ctypes
+    from ctypes import wintypes
+
+    GENERIC_READ = 0x80000000
+    OPEN_EXISTING = 3
+    FILE_ATTRIBUTE_NORMAL = 0x80
+    INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
+    ERROR_SHARING_VIOLATION = 32
+
+    try:
+        handle = ctypes.windll.kernel32.CreateFileW(
+            str(Path(file_path)),
+            GENERIC_READ,
+            0,                       # dwShareMode = 0：要求独占
+            None,
+            OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL,
+            None,
+        )
+    except Exception:  # noqa: BLE001 —— 调用异常时保守返回 False
+        return False
+    if handle == INVALID_HANDLE_VALUE or handle is None or handle == 0:
+        err = ctypes.get_last_error()
+        return err == ERROR_SHARING_VIOLATION
+    ctypes.windll.kernel32.CloseHandle(handle)
+    return False
+
+
 def is_file_download_complete(file_path: str | Path, interval: float = 1.0,
                               max_checks: int = 30,
                               stable_checks: int = 3) -> bool:
@@ -225,6 +305,30 @@ def is_file_download_complete(file_path: str | Path, interval: float = 1.0,
     return False
 
 
+def enhanced_completion_check(file_path: str | Path, interval: float = 1.0,
+                              max_checks: int = 30, stable_checks: int = 3,
+                              use_aria2_check: bool = True,
+                              check_file_locked: bool = True) -> bool:
+    """增强版完成判定：先查 aria2 精确信号 / 文件占用，再回退大小稳定。
+
+    * aria2 控制文件存在且已达标 → 立即完成；
+    * 控制文件存在但未达标 → 立即未完成（无需等大小采样）；
+    * 文件被写入进程占用 → 立即未完成；
+    * 其余回退 ``is_file_download_complete``。
+    """
+    from . import aria2
+
+    if use_aria2_check:
+        res = aria2.aria2_download_complete(file_path)
+        if res is not None:
+            return res
+    if check_file_locked and is_file_locked(file_path):
+        return False
+    return is_file_download_complete(file_path, interval=interval,
+                                     max_checks=max_checks,
+                                     stable_checks=stable_checks)
+
+
 # ---------------------------------------------------------------------------
 # 整理目录（单次整理 + 事件处理）
 # ---------------------------------------------------------------------------
@@ -235,16 +339,19 @@ class DownloadOrganizer:
         self,
         downloads: DownloadsConfig,
         state: ProcessedState,
-        completion_checker=is_file_download_complete,
+        completion_checker=None,
     ):
         self.root = Path(downloads.path).expanduser()
         self.cfg = downloads
         self.state = state
         self.matcher = RuleMatcher(self.root, downloads.rules)
         self.resolver = ConflictResolver(downloads.conflict_policy)
-        self._completion = completion_checker
+        self._completion = completion_checker or enhanced_completion_check
         self._ignored = tuple(downloads.ignored_endings)
         self._stable_checks = max(1, int(getattr(downloads, "stable_checks", 3)))
+        self._use_aria2 = bool(getattr(downloads, "use_aria2_check", True))
+        self._check_locked = bool(getattr(downloads, "check_file_locked", True))
+        self._touch_on_move = bool(getattr(downloads, "update_timestamp_on_move", True))
 
     # -- 判断 ------------------------------------------------
     def should_ignore(self, filename: str) -> bool:
@@ -257,17 +364,22 @@ class DownloadOrganizer:
         return self.resolver.resolve(m.target_dir / filename)
 
     def _is_complete(self, path: str | Path) -> bool:
-        """带连续稳定次数的完成判定（供单次整理与事件处理共用）。
+        """带配置参数的完成判定（供单次整理与事件处理共用）。
 
-        兼容旧的自定义 completion_checker（不含 stable_checks 参数）。
+        兼容旧的自定义 completion_checker（不含额外参数时按新签名调用）。
         """
         kwargs = {"interval": self.cfg.check_interval,
-                  "max_checks": self.cfg.max_checks}
+                  "max_checks": self.cfg.max_checks,
+                  "stable_checks": self._stable_checks,
+                  "use_aria2_check": self._use_aria2,
+                  "check_file_locked": self._check_locked}
         try:
-            if "stable_checks" in inspect.signature(self._completion).parameters:
-                kwargs["stable_checks"] = self._stable_checks
+            params = inspect.signature(self._completion).parameters
+            # 仅传函数实际支持的参数（兼容自定义 checker）
+            kwargs = {k: v for k, v in kwargs.items() if k in params}
         except (TypeError, ValueError):
-            pass
+            kwargs = {"interval": self.cfg.check_interval,
+                      "max_checks": self.cfg.max_checks}
         return self._completion(path, **kwargs)
 
     def create_folders(self, rules=None) -> None:
@@ -305,6 +417,17 @@ class DownloadOrganizer:
         try:
             shutil.move(str(p), str(target))
             log.info("已移动: %s -> %s", filename, target)
+            if self._touch_on_move:
+                try:
+                    now = time.time()
+                    os.utime(str(target), (now, now))
+                except OSError as exc:
+                    log.warning("更新时间戳失败: %s (%s)", target, exc)
+            for cb in MOVE_CALLBACKS:
+                try:
+                    cb(str(p), str(target))
+                except Exception as exc:  # noqa: BLE001 —— 回调失败不影响移动
+                    log.warning("移动回调出错: %s", exc)
             return target
         except Exception as exc:
             log.warning("移动文件 %s 失败: %s", filename, exc)
@@ -410,6 +533,8 @@ class DownloadHandler:
 
     def _process(self, org, file_path: str, filename: str) -> None:
         try:
+            if PAUSED.is_set():
+                return
             if org._is_complete(file_path):
                 log.info("文件下载完成: %s", filename)
                 fp = _fingerprint(file_path)
@@ -455,6 +580,9 @@ class _Worker:
                 break
             handler, file_path, filename = item
             org = handler.organizer
+            if PAUSED.is_set():
+                handler.pending.discard(file_path)
+                continue
             # 处理前再次核对（可能已被其它路径处理/移动）
             if org.state.contains(file_path) or file_path not in handler.pending:
                 continue
@@ -468,6 +596,8 @@ def run_monitor(cfg, state_file: str | None = None, block: bool = True):
     """组装并启动对所有配置目录的监控。返回 Observer 以便外部控制。"""
     Observer = _import_watchdog()
     state = ProcessedState(state_file)
+    roots = [d.path for d in cfg.downloads]
+    state.prune(roots)
     organizers = [DownloadOrganizer(d, state) for d in cfg.downloads]
 
     observer = Observer()
@@ -499,3 +629,85 @@ def run_monitor(cfg, state_file: str | None = None, block: bool = True):
             worker.stop()
             state.flush()
     return observer
+
+
+class PollingMonitor:
+    """无 watchdog 时的轮询回退监控。
+
+    每 ``poll_interval`` 秒扫描监控目录，记录文件 (size, mtime) 快照；
+    连续两轮快照不变的文件才进入完成判定/移动（类似事件 handler 的
+    pending 语义），避免对正在写入的文件反复长 sleep。
+    """
+
+    def __init__(self, cfg, state: ProcessedState):
+        self.cfg = cfg
+        self.state = state
+        # 兼容传入 Config（含 .downloads）或单个 DownloadsConfig
+        dls = cfg.downloads if hasattr(cfg, "downloads") else (cfg,)
+        self.organizers = [DownloadOrganizer(d, state) for d in dls]
+        self._snap: dict[str, tuple[int, int]] = {}
+
+    def _scan_files(self, org: DownloadOrganizer):
+        """扫描单个目录下的文件（recursive 时含子目录，排除目标目录）。"""
+        for p in org._iter_files():
+            yield p
+
+    def _stable(self, path: str) -> bool:
+        """文件连续两轮 size+mtime 未变才算稳定。"""
+        try:
+            st = Path(path).stat()
+            key = (st.st_size, st.st_mtime_ns)
+        except OSError:
+            return False
+        prev = self._snap.get(path)
+        self._snap[path] = key
+        return prev == key
+
+    def run_once(self) -> None:
+        """执行一轮扫描；返回后由调用方控制节奏。"""
+        if PAUSED.is_set():
+            return
+        for org in self.organizers:
+            for entry in self._scan_files(org):
+                sp = str(entry)
+                if org.should_ignore(entry.name):
+                    continue
+                if org.state.contains(sp):
+                    continue
+                if not self._stable(sp):
+                    continue
+                if not org._is_complete(sp):
+                    continue
+                fp = _fingerprint(sp)
+                if org.move_file(entry) is not None:
+                    org.state.record(sp, fp)
+                    self._snap.pop(sp, None)
+        self.state.save()
+
+    def loop(self, block: bool = True) -> None:
+        """常驻轮询循环（优雅停止：KeyboardInterrupt / SystemExit）。"""
+        for org in self.organizers:
+            org.create_folders()
+            org.organize_existing()
+        log.info("开始轮询监控: %s", ", ".join(str(o.root) for o in self.organizers))
+        if not block:
+            return
+        try:
+            while True:
+                time.sleep(min((o.cfg.poll_interval for o in self.organizers),
+                               default=5.0))
+                self.run_once()
+        except KeyboardInterrupt:
+            log.info("停止轮询监控…")
+        finally:
+            self.state.flush()
+
+
+def run_polling(cfg, state_file: str | None = None, block: bool = True) -> PollingMonitor:
+    """启动无 watchdog 的轮询监控。"""
+    state = ProcessedState(state_file)
+    roots = [d.path for d in cfg.downloads]
+    state.prune(roots)
+    mon = PollingMonitor(cfg, state)
+    mon.loop(block=block)
+    return mon
