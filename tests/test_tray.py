@@ -90,3 +90,27 @@ def test_toggle_notifications_flips_flag_and_updates_menu():
     app._toggle_notifications(None, None)
     assert tray.notifications_enabled() is True
     assert updated == [1]
+
+
+def test_toggle_notifications_both_directions_without_icon():
+    from download_organizer import tray
+
+    # 无托盘图标（_icon is None）时切换不应崩溃，也不应调用 update_menu
+    app = tray.TrayApp()
+    tray.set_notifications_enabled(True)
+    app._toggle_notifications(None, None)
+    assert tray.notifications_enabled() is False
+    app._toggle_notifications(None, None)
+    assert tray.notifications_enabled() is True
+
+
+def test_notify_icon_exception_swallowed(monkeypatch):
+    from download_organizer import tray
+
+    class _BrokenIcon:
+        def notify(self, message, title):
+            raise RuntimeError("通知失败")
+
+    monkeypatch.setattr(tray, "_ACTIVE_ICON", _BrokenIcon())
+    tray.set_notifications_enabled(True)
+    tray.notify("标题", "消息")  # 图标通知抛异常：静默吞掉，不向上传播

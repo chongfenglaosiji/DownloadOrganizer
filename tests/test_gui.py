@@ -2,6 +2,8 @@
 """配置 GUI 的模型↔TOML 往返测试（不依赖真实显示环境）。"""
 import os
 
+import pytest
+
 from download_organizer.config import load_config
 from download_organizer.gui import ConfigEditor, _toml_str
 
@@ -102,3 +104,38 @@ def test_load_or_default_defaults_notify_on_move_true(tmp_path):
     editor.config_path = str(tmp_path / "config.toml")
     editor._load_or_default()
     assert editor.notify_on_move is True
+
+
+@pytest.mark.parametrize("checked,expected_text,expected_value", [
+    (False, "notify_on_move = false", False),
+    (True, "notify_on_move = true", True),
+])
+def test_save_commits_checkbox_value_to_toml(tmp_path, monkeypatch,
+                                             checked, expected_text, expected_value):
+    """spec R3 S1/S2：保存路径（_save）把复选框值提交到模型并写回 TOML。
+
+    模型初始值故意与复选框相反，验证 _save 以复选框（var_notify）为准。
+    """
+    from tkinter import messagebox
+
+    class _FakeVar:
+        def __init__(self, value):
+            self._value = value
+
+        def get(self):
+            return self._value
+
+    editor = object.__new__(ConfigEditor)
+    editor.config_path = str(tmp_path / "config.toml")
+    editor.notify_on_move = not checked
+    editor.downloads = []
+    editor.var_notify = _FakeVar(checked)
+    monkeypatch.setattr(editor, "_commit_detail", lambda: None)
+    monkeypatch.setattr(messagebox, "showerror", lambda *a, **k: None)
+    monkeypatch.setattr(messagebox, "showinfo", lambda *a, **k: None)
+
+    editor._save()
+
+    text = (tmp_path / "config.toml").read_text(encoding="utf-8")
+    assert expected_text in text
+    assert load_config(str(tmp_path / "config.toml")).notify_on_move is expected_value

@@ -41,3 +41,24 @@ def test_register_notification_missing_attr_defaults_on():
     cli._register_move_notification(object())
     assert len(MOVE_CALLBACKS) == 1
     assert tray.notifications_enabled() is True
+
+
+def test_register_notification_degrades_silently_when_tray_fails(monkeypatch):
+    # 托盘/通知后端不可用（以 tray 访问器抛异常模拟）：静默降级，不注册回调
+    def _boom(enabled):
+        raise RuntimeError("tray unavailable")
+
+    monkeypatch.setattr(tray, "set_notifications_enabled", _boom)
+    cli._register_move_notification(_FakeCfg(True))
+    assert MOVE_CALLBACKS == []
+    assert tray.notifications_enabled() is True
+
+
+def test_once_mode_registers_no_move_notification(monkeypatch):
+    # spec R1：--once 单次整理模式不显示移动通知 → 常驻注册逻辑不触达
+    monkeypatch.setattr(cli, "_find_config", lambda explicit: None)
+    monkeypatch.setattr(cli, "_run_once", lambda cfg: 0)
+    rc = cli.main(["--once"])
+    assert rc == 0
+    assert MOVE_CALLBACKS == []
+    assert tray.notifications_enabled() is True  # 开关未被改写
