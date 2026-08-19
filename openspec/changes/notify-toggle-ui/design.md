@@ -38,7 +38,7 @@
 ### D2 cli 常驻模式：无条件注册回调，开关从配置初始化
 
 - `cli.py` 常驻路径改为**无条件**注册通知回调，并调用 `tray.set_notifications_enabled(cfg.notify_on_move)` 把运行时开关初始化为配置值。
-- 抽出 `_register_move_notification(cfg)` 辅助函数（cli.py 内，纯函数式、可单测），`main()` 用它替换 L132-140 的条件注册块；保留 try/except 降级（托盘不可用时静默不注册，与现状一致）。
+- 抽出 `_register_move_notification(cfg)` 辅助函数（cli.py 内，无外部 IO、副作用受控、可单测；副作用为向 `MOVE_CALLBACKS` 追加回调与经 `set_notifications_enabled` 改写托盘全局标志），`main()` 用它替换 L132-140 的条件注册块；保留 try/except 降级（托盘不可用时静默不注册，与现状一致）。
 - 效果：`notify_on_move=false` 启动时开关为关、托盘项未勾选，用户仍可在运行时勾选开启——开关双向即时生效。
 
 ### D3 托盘菜单项复用既有勾选切换模式
@@ -65,6 +65,7 @@
 - [`_write_toml` 整文件重写覆盖手工注释] → 既有行为（gui.py L298 注释即声明"由 GUI 生成"），本次不改变；只保证 `notify_on_move` 不再被静默丢弃。
 - [无托盘/无显示环境降级] → 保持既有降级链：托盘不可用则不注册回调（D2 保留 try/except）；GUI 无显示环境返回非零（gui.py L334-343 不变）。
 - [布尔标志跨线程可见性] → 解释器级布尔读写原子且即时可见（GIL），无数据竞争。
+- [配置文件非法类型值（如 `notify_on_move = "false"` 字符串）] → 沿用既有 config.py L204 `bool()` 强转语义（`bool("false")` 为 True，与直觉相反）；本变更不触碰 config.py、GUI 写回布尔字面量不会触发该分支，属既有行为，不在本变更范围（与 spec 中"配置项 `notify_on_move` 决定初始状态"的契约在合法布尔值范围内成立）。
 
 ## Migration Plan
 

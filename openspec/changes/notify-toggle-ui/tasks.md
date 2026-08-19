@@ -19,9 +19,9 @@
 
 ## 4. 单元测试
 
-- [ ] 4.1 `tests/test_gui.py`：`_make_editor` 补充 `notify_on_move` 属性；新增往返用例——保存后 TOML `[organizer]` 段含 `notify_on_move = false/true`，`load_config` 读回一致
-- [ ] 4.2 `tests/test_tray.py`：开关访问器默认值与切换行为；`notify()` 在开关关闭时不调用图标通知（monkeypatch `_ACTIVE_ICON`），开启时调用
-- [ ] 4.3 新增 `tests/test_cli.py`：`_register_move_notification` 在 `notify_on_move` 为 false 时仍注册回调且开关初始化为关，为 true 时开关为开（用例间清理 `MOVE_CALLBACKS` 全局状态）
+- [ ] 4.1 `tests/test_gui.py`：`_make_editor` 补充 `notify_on_move` 属性；新增往返用例——保存后 TOML `[organizer]` 段含 `notify_on_move = false/true`，`load_config` 读回一致；新增加载断言——含 `notify_on_move = false` 的配置经 `_load_or_default` 后 `self.notify_on_move` 为 False（沿用 `object.__new__(ConfigEditor)` 纯数据构造，无窗口）
+- [ ] 4.2 `tests/test_tray.py`：开关访问器默认值与切换行为；`notify()` 在开关关闭时不调用图标通知（monkeypatch `_ACTIVE_ICON`），开启时调用；用例 setup/teardown 将 `tray._NOTIFICATIONS_ENABLED` 重置为默认值 True
+- [ ] 4.3 新增 `tests/test_cli.py`：`_register_move_notification` 在 `notify_on_move` 为 false 时仍注册回调且开关初始化为关，为 true 时开关为开；该函数有受控全局副作用（append `MOVE_CALLBACKS`、改写托盘标志），用例 setup/teardown 清空 `MOVE_CALLBACKS` 并重置 `tray._NOTIFICATIONS_ENABLED` 为 True
 
 ## 5. 验证
 
