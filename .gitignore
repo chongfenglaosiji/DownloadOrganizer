@@ -23,6 +23,7 @@ download_organizer_state.json
 .vscode/
 .DS_Store
 Thumbs.db
+.dsh
 
 # 反编译/工具残留（仅根目录旧残留；tools/ 下的源码脚本如 make_icon.py 需入库）
 /_tools/
