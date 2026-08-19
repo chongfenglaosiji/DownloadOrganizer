@@ -46,6 +46,7 @@ class ConfigEditor:
     # ------------------------------------------------------------------
     def _load_or_default(self) -> None:
         cfg = load_config(self.config_path)
+        self.notify_on_move = bool(cfg.notify_on_move)
         self.downloads = []
         for d in cfg.downloads:
             self.downloads.append({
@@ -108,6 +109,9 @@ class ConfigEditor:
         # 底部按钮
         bottom = ttk.Frame(self.root, padding=6)
         bottom.pack(fill=tk.X)
+        self.var_notify = tk.BooleanVar(value=self.notify_on_move)
+        ttk.Checkbutton(bottom, text="移动后显示桌面通知",
+                        variable=self.var_notify).pack(side=tk.LEFT)
         ttk.Button(bottom, text="保存", command=self._save).pack(side=tk.RIGHT)
         ttk.Button(bottom, text="退出", command=self.root.destroy).pack(side=tk.RIGHT, padx=4)
 
@@ -283,6 +287,7 @@ class ConfigEditor:
     # ------------------------------------------------------------------
     def _save(self) -> None:
         self._commit_detail()
+        self.notify_on_move = self.var_notify.get()
         target = self.config_path or str(Path.cwd() / "config.toml")
         try:
             self._write_toml(Path(target))
@@ -300,6 +305,7 @@ class ConfigEditor:
             "",
             "[organizer]",
             'log_level = "INFO"',
+            f'notify_on_move = {"true" if self.notify_on_move else "false"}',
             "",
         ]
         for d in self.downloads:
