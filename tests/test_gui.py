@@ -6,10 +6,11 @@ from download_organizer.config import load_config
 from download_organizer.gui import ConfigEditor, _toml_str
 
 
-def _make_editor(tmpdir: str):
+def _make_editor(tmpdir: str, notify_on_move: bool = True):
     """跳过窗口初始化，构造一个纯数据编辑器实例。"""
     editor = object.__new__(ConfigEditor)
     editor.config_path = os.path.join(tmpdir, "config.toml")
+    editor.notify_on_move = notify_on_move
     editor.downloads = [{
         "path": "D:/下载", "recursive": True, "conflict_policy": "rename",
         "check_interval": 1.0, "stable_checks": 3, "max_checks": 30,
@@ -62,3 +63,42 @@ def test_roundtrip_multi_dirs(tmp_path):
     assert cfg.downloads[1].path == "E:/其他"
     assert cfg.downloads[1].conflict_policy == "skip"
     assert cfg.downloads[1].check_interval == 2.0
+
+
+def test_roundtrip_writes_notify_on_move_false(tmp_path):
+    editor = _make_editor(str(tmp_path), notify_on_move=False)
+    editor._write_toml(tmp_path / "config.toml")
+    text = (tmp_path / "config.toml").read_text(encoding="utf-8")
+    assert "[organizer]" in text
+    assert "notify_on_move = false" in text
+    cfg = load_config(str(tmp_path / "config.toml"))
+    assert cfg.notify_on_move is False
+
+
+def test_roundtrip_writes_notify_on_move_true(tmp_path):
+    editor = _make_editor(str(tmp_path), notify_on_move=True)
+    editor._write_toml(tmp_path / "config.toml")
+    text = (tmp_path / "config.toml").read_text(encoding="utf-8")
+    assert "notify_on_move = true" in text
+    cfg = load_config(str(tmp_path / "config.toml"))
+    assert cfg.notify_on_move is True
+
+
+def test_load_or_default_reads_notify_on_move_false(tmp_path):
+    (tmp_path / "config.toml").write_text(
+        '[organizer]\nnotify_on_move = false\n\n[[downloads]]\npath = "D:/下载"\n',
+        encoding="utf-8")
+    editor = object.__new__(ConfigEditor)
+    editor.config_path = str(tmp_path / "config.toml")
+    editor._load_or_default()
+    assert editor.notify_on_move is False
+
+
+def test_load_or_default_defaults_notify_on_move_true(tmp_path):
+    (tmp_path / "config.toml").write_text(
+        '[organizer]\nlog_level = "DEBUG"\n\n[[downloads]]\npath = "D:/下载"\n',
+        encoding="utf-8")
+    editor = object.__new__(ConfigEditor)
+    editor.config_path = str(tmp_path / "config.toml")
+    editor._load_or_default()
+    assert editor.notify_on_move is True
