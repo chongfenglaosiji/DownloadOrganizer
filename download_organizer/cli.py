@@ -104,6 +104,23 @@ def _run_once(cfg) -> int:
     return 0
 
 
+def _register_move_notification(cfg) -> None:
+    """注册移动成功通知回调，并把运行时通知开关初始化为配置值。
+
+    副作用受控（无外部 IO）：向 MOVE_CALLBACKS 追加回调、经
+    tray.set_notifications_enabled 改写托盘全局开关标志；托盘/通知后端
+    不可用时静默降级（不注册），与现状一致。回调无条件注册，通知是否
+    显示由 notify() 内的开关门控，使托盘开关开/关两个方向都即时生效。
+    """
+    try:
+        from .tray import notify, set_notifications_enabled
+        set_notifications_enabled(getattr(cfg, "notify_on_move", True))
+        MOVE_CALLBACKS.append(
+            lambda src, dst: notify("已整理", f"{Path(dst).name} → {Path(dst).parent.name}"))
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
     cfg_path = _find_config(args.config)
@@ -130,14 +147,8 @@ def main(argv=None) -> int:
         return 1
 
     try:
-        # 移动成功通知（可选，需托盘/通知后端）
-        if getattr(cfg, "notify_on_move", True):
-            try:
-                from .tray import notify
-                MOVE_CALLBACKS.append(
-                    lambda src, dst: notify("已整理", f"{Path(dst).name} → {Path(dst).parent.name}"))
-            except Exception:  # noqa: BLE001
-                pass
+        # 移动成功通知：无条件注册回调，运行时开关初始化为配置值（托盘不可用则静默降级）
+        _register_move_notification(cfg)
 
         # 常驻：优先 watchdog；未安装时自动回退轮询监控；可选托盘
         try:

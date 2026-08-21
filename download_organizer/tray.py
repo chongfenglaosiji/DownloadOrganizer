@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """系统托盘（pystray）与桌面通知。
 
-托盘菜单：暂停/继续、立即整理一次、打开配置、打开日志目录、退出。
+托盘菜单：暂停/继续、通知、立即整理一次、打开配置、打开日志目录、退出。
 pystray 不可用（未安装 / 无显示环境）时相关函数自动降级为 no-op，
 不影响核心监控逻辑。
 """
@@ -33,6 +33,21 @@ def is_paused() -> bool:
 def set_paused(paused: bool) -> None:
     from .organizer import set_paused as _set_paused
     _set_paused(paused)
+
+
+# 通知开关（运行时状态；启动时由 cli 以配置 notify_on_move 初始化，托盘菜单可切换）
+_NOTIFICATIONS_ENABLED = True
+
+
+def notifications_enabled() -> bool:
+    """返回当前运行时通知开关状态。"""
+    return _NOTIFICATIONS_ENABLED
+
+
+def set_notifications_enabled(enabled: bool) -> None:
+    """设置运行时通知开关（托盘切换即时生效；不写回配置文件）。"""
+    global _NOTIFICATIONS_ENABLED
+    _NOTIFICATIONS_ENABLED = bool(enabled)
 
 
 # 当前运行中的托盘图标（供 notify 复用；无托盘时为 None）
@@ -89,6 +104,11 @@ class TrayApp:
                 self._toggle_pause,
                 checked=lambda item: PAUSED.is_set(),
             ),
+            pystray.MenuItem(
+                "通知",
+                self._toggle_notifications,
+                checked=lambda item: notifications_enabled(),
+            ),
             pystray.MenuItem("立即整理一次", lambda icon, item: self._on_run_once()),
             pystray.MenuItem("打开配置…", lambda icon, item: self._on_open_config()),
             pystray.MenuItem("打开日志目录", lambda icon, item: open_log_dir()),
@@ -99,6 +119,11 @@ class TrayApp:
     def _toggle_pause(self, icon, item) -> None:
         self._on_toggle_pause()
         self._paused_label = "恢复整理" if PAUSED.is_set() else "暂停整理"
+        if self._icon is not None:
+            self._icon.update_menu()
+
+    def _toggle_notifications(self, icon, item) -> None:
+        set_notifications_enabled(not notifications_enabled())
         if self._icon is not None:
             self._icon.update_menu()
 
@@ -131,7 +156,9 @@ class TrayApp:
 
 
 def notify(title: str, message: str) -> None:
-    """桌面通知；无运行中的托盘图标时静默降级（不新建独立图标）。"""
+    """桌面通知；开关关闭或无运行中的托盘图标时静默降级（不新建独立图标）。"""
+    if not _NOTIFICATIONS_ENABLED:
+        return
     icon = _ACTIVE_ICON
     if icon is None:
         return
